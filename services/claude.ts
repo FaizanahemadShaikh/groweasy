@@ -1,19 +1,6 @@
 import { CrmRecord } from '../types/index.js';
 
-function cleanJsonResponse(text: string): string {
-  let cleaned = text.trim();
-  if (cleaned.startsWith('```json')) {
-    cleaned = cleaned.substring(7);
-  } else if (cleaned.startsWith('```')) {
-    cleaned = cleaned.substring(3);
-  }
-  if (cleaned.endsWith('```')) {
-    cleaned = cleaned.substring(0, cleaned.length - 3);
-  }
-  return cleaned.trim();
-}
-
-// JSON Schema to enforce structured CRM format output from Groq according to PDF specs
+// JSON Schema definition for forced tool output (standard JSON Schema structure)
 const crmResponseSchema = {
   type: 'object',
   properties: {
@@ -50,13 +37,11 @@ const crmResponseSchema = {
         required: [
           'created_at', 'name', 'email', 'country_code', 'mobile_without_country_code', 'company', 'city', 'state', 'country', 
           'lead_owner', 'crm_status', 'crm_note', 'possession_time', 'description'
-        ],
-        additionalProperties: false
+        ]
       }
     }
   },
-  required: ['records'],
-  additionalProperties: false
+  required: ['records']
 };
 
 // JSON Schema for AI Schema Detection Mappings
@@ -86,33 +71,31 @@ const schemaDetectionResponseSchema = {
       required: [
         'created_at', 'name', 'email', 'country_code', 'mobile_without_country_code', 'company', 'city', 'state', 'country',
         'lead_owner', 'crm_status', 'crm_note', 'data_source', 'possession_time', 'description'
-      ],
-      additionalProperties: false
+      ]
     }
   },
-  required: ['mappings'],
-  additionalProperties: false
+  required: ['mappings']
 };
 
 /**
- * Standardizes a batch of raw records using Groq API
+ * Standardizes a batch of raw records using Claude API
  * @param records - Raw CSV rows
  * @param headers - Headers of the CSV
- * @param apiKey - Groq API Key
+ * @param apiKey - Claude API Key
  * @param mappings - Custom CRM Field to CSV Column mappings
  * @returns Standardized CRM records
  */
-export async function processBatchWithGroq(
+export async function processBatchWithClaude(
   records: Array<Record<string, string>>, 
   headers: Array<string>, 
   apiKey: string, 
   mappings: Record<string, string> = {}
 ): Promise<Array<CrmRecord>> {
   if (!apiKey) {
-    throw new Error('Groq API key is required. Please set it in your environment or provide it in the settings panel.');
+    throw new Error('Claude API key is required. Please set it in your environment or provide it in the settings panel.');
   }
 
-  const model = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
+  const model = process.env.CLAUDE_MODEL || 'claude-3-5-haiku-20241022';
   const systemInstruction = `You are an expert CRM data migration specialist for GrowEasy CRM.
 Your objective is to analyze a batch of raw record data parsed from a CSV file and map/clean it into standard GrowEasy CRM fields.
 
@@ -140,31 +123,7 @@ Rules:
 5. Date Format:
    - Standardize the "created_at" field to "YYYY-MM-DD HH:mm:ss" format so that it is convertible using JavaScript's new Date(created_at).
 6. Do not lose context. Any fields or information in the CSV that do not map to the standard schema must be formatted nicely and appended to the "crm_note" field. For example: "Original columns: [Header: Value, Header: Value]".
-7. Do not invent details. Leave fields empty string "" if there is no equivalent data in the row.
-8. Output Format:
-   - You MUST return a JSON object with a single root key "records", containing an array of records matching this JSON structure:
-     {
-       "records": [
-         {
-           "created_at": "YYYY-MM-DD HH:mm:ss",
-           "name": "Full Name",
-           "email": "email@example.com",
-           "country_code": "+91",
-           "mobile_without_country_code": "9876543210",
-           "company": "Company Name",
-           "city": "City",
-           "state": "State",
-           "country": "Country",
-           "lead_owner": "Lead Owner",
-           "crm_status": "GOOD_LEAD_FOLLOW_UP",
-           "crm_note": "CRM Note",
-           "data_source": "leads_on_demand",
-           "possession_time": "Possession Time",
-           "description": "Description"
-         }
-       ]
-     }
-   - Do not include any explanations, introduction texts, markdown wrappers, or trailing text. Return ONLY the JSON object.`;
+7. Do not invent details. Leave fields empty string "" if there is no equivalent data in the row.`;
 
   const prompt = `CSV Column Headers: ${JSON.stringify(headers)}
 User-Confirmed Schema Mappings: ${JSON.stringify(mappings, null, 2)}
@@ -172,23 +131,33 @@ User-Confirmed Schema Mappings: ${JSON.stringify(mappings, null, 2)}
 Raw Rows to process:
 ${JSON.stringify(records, null, 2)}
 
-Return the standardized JSON representation following the schema.`;
+Standardize these records by executing the tool 'standardize_crm_records'.`;
 
   try {
-    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
         model,
+        max_tokens: 4096,
+        system: systemInstruction,
         messages: [
-          { role: 'system', content: systemInstruction },
           { role: 'user', content: prompt }
         ],
-        response_format: {
-          type: 'json_object'
+        tools: [
+          {
+            name: 'standardize_crm_records',
+            description: 'Format the raw CSV records into standard CRM records according to the target CRM schema.',
+            input_schema: crmResponseSchema
+          }
+        ],
+        tool_choice: {
+          type: 'tool',
+          name: 'standardize_crm_records'
         },
         temperature: 0.1
       })
@@ -196,18 +165,17 @@ Return the standardized JSON representation following the schema.`;
 
     if (!response.ok) {
       const errText = await response.text();
-      throw new Error(`Groq API error (status ${response.status}): ${errText}`);
+      throw new Error(`Claude API error (status ${response.status}): ${errText}`);
     }
 
     const data: any = await response.json();
-    const responseText = data.choices?.[0]?.message?.content;
+    const toolUse = data.content?.find((c: any) => c.type === 'tool_use' && c.name === 'standardize_crm_records');
     
-    if (!responseText) {
-      throw new Error('Groq API returned an empty response.');
+    if (!toolUse || !toolUse.input) {
+      throw new Error('Claude API did not trigger the standardization tool call.');
     }
 
-    const parsedResponse = JSON.parse(cleanJsonResponse(responseText));
-    const results = (parsedResponse.records || []) as Array<any>;
+    const results = (toolUse.input.records || []) as Array<any>;
     
     return results.map(r => ({
       created_at: r.created_at || "",
@@ -227,28 +195,28 @@ Return the standardized JSON representation following the schema.`;
       description: r.description || ""
     }));
   } catch (error: any) {
-    console.error('Error calling Groq API:', error);
-    throw new Error(`Groq processing failed: ${error.message}`);
+    console.error('Error calling Claude API:', error);
+    throw new Error(`Claude processing failed: ${error.message}`);
   }
 }
 
 /**
- * Detects mapping from CSV columns to CRM fields using Groq API
+ * Detects mapping from CSV columns to CRM fields using Claude API
  * @param headers - Headers of the CSV
  * @param sampleRows - A few sample rows (2-3) of the CSV
- * @param apiKey - Groq API Key
+ * @param apiKey - Claude API Key
  * @returns Mapping dictionary: crmField -> csvHeader
  */
-export async function detectSchemaWithGroq(
+export async function detectSchemaWithClaude(
   headers: Array<string>, 
   sampleRows: Array<Record<string, string>>, 
   apiKey: string
 ): Promise<Record<string, string>> {
   if (!apiKey) {
-    throw new Error('Groq API key is required to detect schema.');
+    throw new Error('Claude API key is required to detect schema.');
   }
 
-  const model = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
+  const model = process.env.CLAUDE_MODEL || 'claude-3-5-haiku-20241022';
   const systemInstruction = `You are a schema matching expert. Given a list of CSV headers and a few sample rows, you must identify which CSV headers correspond to the following standard CRM fields:
 - created_at (created at, date, submission date)
 - name (full name, lead name, customer, contact person)
@@ -266,52 +234,39 @@ export async function detectSchemaWithGroq(
 - possession_time (possession, move-in date, timeline)
 - description (description, details, about)
 
-For each CRM field, select the EXACT header string from the CSV columns list. If a CRM field has no matching header, set it to an empty string "". Use the sample rows to understand the semantic meaning of the headers (e.g. if a header is "Contact Info" but the values are "john@doe.com", it maps to email, not name).
-
-Output Format:
-- You MUST return a JSON object with a single root key "mappings" containing the mapping dictionary from standard CRM fields to CSV headers, like this:
-  {
-    "mappings": {
-      "created_at": "CSV_HEADER_NAME",
-      "name": "CSV_HEADER_NAME",
-      "email": "CSV_HEADER_NAME",
-      "country_code": "CSV_HEADER_NAME",
-      "mobile_without_country_code": "CSV_HEADER_NAME",
-      "company": "CSV_HEADER_NAME",
-      "city": "CSV_HEADER_NAME",
-      "state": "CSV_HEADER_NAME",
-      "country": "CSV_HEADER_NAME",
-      "lead_owner": "CSV_HEADER_NAME",
-      "crm_status": "CSV_HEADER_NAME",
-      "crm_note": "CSV_HEADER_NAME",
-      "data_source": "CSV_HEADER_NAME",
-      "possession_time": "CSV_HEADER_NAME",
-      "description": "CSV_HEADER_NAME"
-    }
-  }
-- Do not include any explanations, introduction texts, markdown wrappers, or trailing text. Return ONLY the JSON object.`;
+For each CRM field, select the EXACT header string from the CSV columns list. If a CRM field has no matching header, set it to an empty string "". Use the sample rows to understand the semantic meaning of the headers (e.g. if a header is "Contact Info" but the values are "john@doe.com", it maps to email, not name).`;
 
   const prompt = `CSV Column Headers: ${JSON.stringify(headers)}
 Sample Rows:
 ${JSON.stringify(sampleRows, null, 2)}
 
-Return the schema mapping JSON representation.`;
+Detect the field mappings by calling the tool 'detect_schema_mappings'.`;
 
   try {
-    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
         model,
+        max_tokens: 2048,
+        system: systemInstruction,
         messages: [
-          { role: 'system', content: systemInstruction },
           { role: 'user', content: prompt }
         ],
-        response_format: {
-          type: 'json_object'
+        tools: [
+          {
+            name: 'detect_schema_mappings',
+            description: 'Map raw CSV columns to standardized CRM fields.',
+            input_schema: schemaDetectionResponseSchema
+          }
+        ],
+        tool_choice: {
+          type: 'tool',
+          name: 'detect_schema_mappings'
         },
         temperature: 0.1
       })
@@ -319,20 +274,19 @@ Return the schema mapping JSON representation.`;
 
     if (!response.ok) {
       const errText = await response.text();
-      throw new Error(`Groq API error (status ${response.status}): ${errText}`);
+      throw new Error(`Claude API error (status ${response.status}): ${errText}`);
     }
 
     const data: any = await response.json();
-    const responseText = data.choices?.[0]?.message?.content;
+    const toolUse = data.content?.find((c: any) => c.type === 'tool_use' && c.name === 'detect_schema_mappings');
     
-    if (!responseText) {
-      throw new Error('Groq API returned an empty response during schema detection.');
+    if (!toolUse || !toolUse.input) {
+      throw new Error('Claude API did not trigger the schema mapping tool call.');
     }
 
-    const parsedResponse = JSON.parse(cleanJsonResponse(responseText));
-    return (parsedResponse.mappings || {}) as Record<string, string>;
+    return (toolUse.input.mappings || {}) as Record<string, string>;
   } catch (error: any) {
-    console.error('Error calling Groq API for schema detection:', error);
+    console.error('Error calling Claude API for schema detection:', error);
     throw new Error(`Schema detection failed: ${error.message}`);
   }
 }

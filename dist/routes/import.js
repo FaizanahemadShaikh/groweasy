@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { processBatchWithGroq, detectSchemaWithGroq } from '../services/groq.js';
+import { processBatchWithClaude, detectSchemaWithClaude } from '../services/claude.js';
 const router = Router();
 // Route 1: Detect schema mapping based on headers and sample rows
 router.post('/detect-schema', async (req, res, next) => {
@@ -12,15 +12,15 @@ router.post('/detect-schema', async (req, res, next) => {
             });
             return;
         }
-        const apiKey = req.headers['x-groq-key'] || req.headers['x-openrouter-key'] || req.headers['x-gemini-key'] || process.env.GROQ_API_KEY || process.env.OPENROUTER_API_KEY || process.env.GEMINI_API_KEY;
+        const apiKey = req.headers['x-claude-key'] || req.headers['x-groq-key'] || req.headers['x-openrouter-key'] || req.headers['x-gemini-key'] || process.env.CLAUDE_API_KEY || process.env.GROQ_API_KEY || process.env.OPENROUTER_API_KEY || process.env.GEMINI_API_KEY;
         if (!apiKey) {
             res.status(400).json({
                 success: false,
-                message: 'Groq API Key is missing. Please provide it in the UI settings or configure GROQ_API_KEY in the backend.'
+                message: 'Claude API Key is missing. Please provide it in the UI settings or configure CLAUDE_API_KEY in the backend.'
             });
             return;
         }
-        const mappings = await detectSchemaWithGroq(headers, sampleRows || [], apiKey);
+        const mappings = await detectSchemaWithClaude(headers, sampleRows || [], apiKey);
         res.json({
             success: true,
             mappings
@@ -53,17 +53,17 @@ router.post('/process-batch', async (req, res, next) => {
             return;
         }
         // Direct Gemini API key validation check
-        const apiKey = req.headers['x-groq-key'] || req.headers['x-openrouter-key'] || req.headers['x-gemini-key'] || process.env.GROQ_API_KEY || process.env.OPENROUTER_API_KEY || process.env.GEMINI_API_KEY;
+        const apiKey = req.headers['x-claude-key'] || req.headers['x-groq-key'] || req.headers['x-openrouter-key'] || req.headers['x-gemini-key'] || process.env.CLAUDE_API_KEY || process.env.GROQ_API_KEY || process.env.OPENROUTER_API_KEY || process.env.GEMINI_API_KEY;
         if (!apiKey) {
             res.status(400).json({
                 success: false,
-                message: 'Groq API Key is missing. Please provide it in the UI settings or configure GROQ_API_KEY in the backend.'
+                message: 'Claude API Key is missing. Please provide it in the UI settings or configure CLAUDE_API_KEY in the backend.'
             });
             return;
         }
-        console.log(`Processing batch of ${records.length} records with Groq...`);
-        // Call Groq to standardize the records
-        const processedRecords = await processBatchWithGroq(records, headers, apiKey, mappings || {});
+        console.log(`Processing batch of ${records.length} records with Claude...`);
+        // Call Claude to standardize the records
+        const processedRecords = await processBatchWithClaude(records, headers, apiKey, mappings || {});
         // Apply strict CRM validation rules:
         // "Records without both an email address and a mobile number should be skipped."
         const validationResults = processedRecords.map((record, index) => {

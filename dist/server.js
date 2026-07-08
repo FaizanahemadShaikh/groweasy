@@ -9,7 +9,7 @@ const PORT = process.env.PORT || 5001;
 app.use(cors({
     origin: '*', // Allows access from any port (e.g. Next.js dev on 3000)
     methods: ['GET', 'POST', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-gemini-key', 'x-openrouter-key', 'x-groq-key']
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-gemini-key', 'x-openrouter-key', 'x-groq-key', 'x-claude-key']
 }));
 // Express middleware
 app.use(express.json({ limit: '10mb' }));
@@ -19,7 +19,7 @@ app.get('/health', (req, res) => {
     res.json({
         status: 'ok',
         time: new Date(),
-        hasServerKey: !!process.env.GROQ_API_KEY || !!process.env.OPENROUTER_API_KEY || !!process.env.GEMINI_API_KEY
+        hasServerKey: !!process.env.CLAUDE_API_KEY || !!process.env.GROQ_API_KEY || !!process.env.OPENROUTER_API_KEY || !!process.env.GEMINI_API_KEY
     });
 });
 // Import route mounting
