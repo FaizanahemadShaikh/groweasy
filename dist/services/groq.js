@@ -102,7 +102,7 @@ export async function processBatchWithGroq(records, headers, apiKey, mappings = 
     if (!apiKey) {
         throw new Error('Groq API key is required. Please set it in your environment or provide it in the settings panel.');
     }
-    const model = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
+    const model = process.env.GROQ_MODEL || 'llama-3.1-8b-instant';
     const systemInstruction = `You are an expert CRM data migration specialist for GrowEasy CRM.
 Your objective is to analyze a batch of raw record data parsed from a CSV file and map/clean it into standard GrowEasy CRM fields.
 
@@ -226,7 +226,7 @@ export async function detectSchemaWithGroq(headers, sampleRows, apiKey) {
     if (!apiKey) {
         throw new Error('Groq API key is required to detect schema.');
     }
-    const model = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
+    const model = process.env.GROQ_MODEL || 'llama-3.1-8b-instant';
     const systemInstruction = `You are a schema matching expert. Given a list of CSV headers and a few sample rows, you must identify which CSV headers correspond to the following standard CRM fields:
 - created_at (created at, date, submission date)
 - name (full name, lead name, customer, contact person)
