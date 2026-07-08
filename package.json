@@ -1,0 +1,26 @@
+{
+  "name": "hackcsv-backend",
+  "version": "1.0.0",
+  "description": "AI-powered CSV Importer backend (TypeScript)",
+  "main": "dist/server.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "dev": "tsx watch server.ts"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.21.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.1"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.11.24",
+    "ts-node-dev": "^2.0.0",
+    "tsx": "^4.23.0",
+    "typescript": "^5.3.3"
+  }
+}
